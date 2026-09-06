@@ -437,9 +437,11 @@ void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
     engine.delay(50);
 }
 
-void DrawImage(uint16_t line_number, const unsigned char *bitmap) {
+void DrawImage(uint16_t imge_number) {
     engine.clear();
+    //engine.bitmap(0, 0, image_6_ntsc, 0, 320, 200);
     engine.bitmap(4, 10, image_9_ntsc, 0, 320, 200);
+  //  engine.bitmap(4, 4, image_11_ntsc, 0, 320, 200);
     if (framessostate > 500) framessostate = 0;
     engine.delay(500);
 }
@@ -508,7 +510,7 @@ void loop() {
             DrawSchematic(60, 60, schematic);
             break;
         case 6:
-            DrawImage(10, image_5_ntsc);
+            DrawImage(10);
             break;
         case 7:
             DrawTerminalMode();
