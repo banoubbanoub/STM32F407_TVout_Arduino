@@ -33,6 +33,10 @@
 #define TERMINAL_ROWS  ((SCREEN_HEIGHT - TERMINAL_TOP - 5) / CHAR_HEIGHT)
 #define CURSOR_INTERVAL 500
 
+// Hardware Serial for ESP8266 connection (USART1: PA10/PA9)
+HardwareSerial Serial1(PA10, PA9);
+#define ESP_SERIAL Serial1
+
 // ------------------------------------------------------------
 // Global Objects & Mode State
 // ------------------------------------------------------------
@@ -43,7 +47,7 @@ const byte address[6] = "00001";
 Engine3D engine;
 
 uint8_t currentMode = 0;
-const uint8_t TOTAL_MODES = 9;
+const uint8_t TOTAL_MODES = 10; // Modes 0 to 9
 bool lastButtonState = LOW;
 int16_t framessostate = 0;
 
@@ -54,6 +58,17 @@ uint16_t cursorY = 0;
 bool cursorVisible = true;
 uint32_t lastCursorTime = 0;
 bool rf24Initialized = false;
+
+// Wi-Fi Dashboard Buffers & Connection Monitoring
+char wifiTime[16] = "Syncing...";
+char wifiWeather[32] = "Loading...";
+char wifiQuote[128] = "Fetching quote of the day...";
+
+bool espConnected = false;
+uint32_t lastEspRxTime = 0;
+uint32_t lastPingTime = 0;
+const uint32_t ESP_TIMEOUT = 4000;   // 4 seconds without data = Disconnected
+const uint32_t PING_INTERVAL = 3000; // Ping ESP8266 every 3 seconds
 
 // ------------------------------------------------------------
 // Math & Engine Helpers
@@ -75,6 +90,99 @@ void SetupMatrix() {
     );
 
     engine.rotateEuler(engine.projectionMatrix, -20, 0, 0);
+}
+
+// ------------------------------------------------------------
+// WiFi Parsing & Connection Handling
+// ------------------------------------------------------------
+void parseESPData() {
+    while (ESP_SERIAL.available()) {
+        String line = ESP_SERIAL.readStringUntil('\n');
+        line.trim();
+
+        if (line.length() > 0) {
+            espConnected = true;
+            lastEspRxTime = millis();
+        }
+
+        if (line == "PONG") {
+            // Heartbeat ACK from ESP8266
+            continue;
+        } else if (line.startsWith("TIME:")) {
+            strncpy(wifiTime, line.substring(5).c_str(), sizeof(wifiTime) - 1);
+        } else if (line.startsWith("WX:")) {
+            strncpy(wifiWeather, line.substring(3).c_str(), sizeof(wifiWeather) - 1);
+        } else if (line.startsWith("QUOTE:")) {
+            strncpy(wifiQuote, line.substring(6).c_str(), sizeof(wifiQuote) - 1);
+        }
+    }
+
+    // Check heartbeat timeout
+    if (millis() - lastEspRxTime > ESP_TIMEOUT) {
+        espConnected = false;
+    }
+
+    // Periodic ping to keep connection status active
+    if (millis() - lastPingTime > PING_INTERVAL) {
+        ESP_SERIAL.println("PING");
+        lastPingTime = millis();
+    }
+}
+
+void DrawWiFiDashboard() {
+    parseESPData();
+
+    // Connection Check
+    if (!espConnected) {
+        engine.setColor(1);
+        engine.setPen(35, 80);
+        engine.drawText("ESP8266 NOT CONNECTED", 2);
+
+        engine.setPen(45, 110);
+        engine.drawText("Check TX/RX & Power Pins", 1);
+        return;
+    }
+
+    // Header
+    engine.setColor(1);
+    engine.setPen(50, 10);
+    engine.drawText("WIFI DASHBOARD", 2);
+
+    // Render Time
+    engine.setPen(20, 40);
+    engine.drawText("TIME:", 1);
+    engine.setPen(70, 40);
+    engine.drawText(wifiTime, 2);
+
+    // Render Weather
+    engine.setPen(20, 75);
+    engine.drawText("WEATHER:", 1);
+    engine.setPen(20, 90);
+    engine.drawText(wifiWeather, 2);
+
+    // Render Quote of the Day
+    engine.setPen(20, 125);
+    engine.drawText("QUOTE OF THE DAY:", 1);
+
+    // Word wrap rendering for long quotes
+    int startY = 142;
+    int maxLineChars = 26; // ~320px width at text scale 1
+    int len = strlen(wifiQuote);
+    int offset = 0;
+
+    while (offset < len && startY < (SCREEN_HEIGHT - 10)) {
+        char lineBuf[28];
+        int chunk = (len - offset > maxLineChars) ? maxLineChars : (len - offset);
+        
+        strncpy(lineBuf, wifiQuote + offset, chunk);
+        lineBuf[chunk] = '\0';
+
+        engine.setPen(20, startY);
+        engine.drawText(lineBuf, 1);
+
+        offset += chunk;
+        startY += 12;
+    }
 }
 
 // ------------------------------------------------------------
@@ -177,32 +285,27 @@ void initRF24() {
 }
 
 void DrawTerminalMode() {
-    // Check for incoming wireless data
     if (rf24Initialized && radio.available()) {
         char receivedChar;
         radio.read(&receivedChar, sizeof(receivedChar));
         terminalPutChar(receivedChar);
     }
 
-    // Handle cursor blink timer
     uint32_t now = millis();
     if ((now - lastCursorTime) >= CURSOR_INTERVAL) {
         lastCursorTime = now;
         cursorVisible = !cursorVisible;
     }
 
-    // Render Title
     engine.setColor(1);
     engine.setPen(60, 5);
     engine.drawText("WIRELESS TERMINAL", 2);
 
-    // Render Text Rows
     for (uint16_t y = 0; y < TERMINAL_ROWS; y++) {
         engine.setPen(TERMINAL_LEFT, TERMINAL_TOP + y * CHAR_HEIGHT);
         engine.drawText(terminal[y], TEXT_SCALE);
     }
 
-    // Render Cursor
     if (cursorVisible) {
         int cursorPixelX = TERMINAL_LEFT + cursorX * CHAR_WIDTH;
         int cursorPixelY = TERMINAL_TOP + cursorY * CHAR_HEIGHT;
@@ -336,8 +439,7 @@ void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
 
 void DrawImage(uint16_t line_number, const unsigned char *bitmap) {
     engine.clear();
-    engine.bitmap(0, 0, image_6_ntsc, 0, 320, 200);
-
+    engine.bitmap(4, 10, image_9_ntsc, 0, 320, 200);
     if (framessostate > 500) framessostate = 0;
     engine.delay(500);
 }
@@ -351,10 +453,13 @@ void TVlogo() {
 // Setup
 // ------------------------------------------------------------
 void setup() {
-    // Flash acceleration to avoid AHB stalls
     FLASH->ACR |= FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
 
     pinMode(USER_BUTTON_PIN, INPUT);
+    
+    // Initialize UART connection to ESP8266
+    ESP_SERIAL.begin(115200);
+
     engine.begin();
     engine.setDoubleBuffering(true);
     SetupMatrix();
@@ -364,25 +469,25 @@ void setup() {
 // Main Loop
 // ------------------------------------------------------------
 void loop() {
-    // Mode Switcher (User Button on PA0)
     bool currentButtonState = digitalRead(USER_BUTTON_PIN);
     if (currentButtonState == HIGH && lastButtonState == LOW) {
         currentMode = (currentMode + 1) % TOTAL_MODES;
         framessostate = 0;
 
-        // Initialize RF24 upon switching into Mode 7
         if (currentMode == 7) {
             initRF24();
+        } else if (currentMode == 9) {
+            // Request fresh payload when cycling to WiFi dashboard
+            ESP_SERIAL.println("REFRESH");
+            lastPingTime = millis();
         }
 
         delay(50); // Debounce
     }
     lastButtonState = currentButtonState;
 
-    // Clear Backbuffer
     engine.clear();
 
-    // Mode Dispatcher
     switch (currentMode) {
         case 0:
             DrawMesh();
@@ -411,6 +516,9 @@ void loop() {
         case 8:
             TVlogo();
             break;
+        case 9:
+            DrawWiFiDashboard();
+            break;
         default:
             engine.setColor(1);
             engine.setPen(60, 10);
@@ -418,8 +526,6 @@ void loop() {
             break;
     }
 
-    // Display backbuffer frame
     engine.display();
-
     framessostate++;
 }
