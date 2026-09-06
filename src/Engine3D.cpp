@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cmath>
-
+#include "TVOlogo.h"
 #ifndef FBW
 #define FBW 320
 #endif
@@ -167,61 +167,7 @@ void Engine3D::drawPixel(uint16_t x,uint16_t y,uint8_t c)
     sp(x, y, c);
 }
 
-/*
-void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp,uint16_t i, uint16_t width, uint16_t lines) {
-
-  uint8_t temp, lshift, rshift, save, xtra;
-  uint16_t si = 0;
-  
-  rshift = x&7;
-  lshift = 8-rshift;
-  if (width == 0) {
-  	width = *(bmp + i);
-    i++;
-  }
-  if (lines == 0) {
-    lines = *(bmp + i);
-    i++;
-  }
-    
-  if (width&7) {
-    xtra = width&7;
-    width = width/8;
-    width++;
-  }
-  else {
-    xtra = 8;
-    width = width/8;
-  }
-  
-  for (uint8_t l = 0; l < lines; l++) {
-    si = (y + l)*_hres + x/8;
-    if (width == 1)
-      temp = 0xff >> rshift + xtra;
-    else
-      temp = 0;
-    save = _screen[si];
-    _screen[si] &= ((0xff << lshift) | temp);
-  	temp = *(bmp + i++);
-    _screen[si++] |= temp >> rshift;
-    for ( uint16_t b = i + width-1; i < b; i++) {
-      save = _screen[si];
-      _screen[si] = temp << lshift;
-    	temp = *(bmp + i);
-      _screen[si++] |= temp >> rshift;
-    }
-    if (rshift + xtra < 8)
-      _screen[si-1] |= (save & (0xff >> rshift + xtra)); //test me!!!
-    if (rshift + xtra - 8 > 0)
-      _screen[si] &= (0xff >> rshift + xtra - 8);
-    _screen[si] |= temp << lshift;
-  }
-} // end of bitmap
-*/
-
-void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines) 
-{
-    /*
+void Engine3D::Schematic(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines){
     uint8_t temp, lshift, rshift, save, xtra;
     uint16_t si = 0;
     
@@ -280,7 +226,46 @@ void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_
             _screen[si] |= (temp << lshift);
         }
     }
-        */
+}
+
+void Engine3D::intro()
+{
+    
+   const uint16_t w = TVOlogo[0];   // 96 pixels
+    const uint16_t h = TVOlogo[1];   // 32 pixels
+
+    const uint16_t x = (hres() - w) >> 1;
+    const uint16_t startY = (vres() - h) >> 1;
+
+    // Draw the logo progressively expanding vertically from the center
+    for (uint16_t lines = 1; lines <= h; lines++)
+    {
+        clear_screen();
+
+        // Adjust Y dynamically so the visible portion stays centrally aligned
+        uint16_t currentY =  startY + ((h - lines) >> 1);
+
+        // Render 'lines' rows starting from the top offset of the bitmap
+        Schematic(
+            x,
+            currentY,
+            TVOlogo,
+            2,
+            w,
+            lines
+        );
+
+        delay(50);
+    }
+
+    delay(2000);
+
+    clear_screen();
+}
+
+void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines) 
+{
+   
 
          if (!bmp || width == 0 || lines == 0)
         return;

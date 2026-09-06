@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Engine3D.h>
 #include "schematic.h"
-#include "TVOlogo.h"
+
 #include "lenabmp.h"
 #include "rectbmp.h"
 #include "image_data.h"
@@ -10,7 +10,7 @@
 
 // Track active display mode and button state
 uint8_t currentMode = 0;
-const uint8_t TOTAL_MODES = 11;
+const uint8_t TOTAL_MODES = 8;
 bool lastButtonState = LOW;
 
 Engine3D engine;
@@ -185,7 +185,7 @@ void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
     engine.setPen(60, 10);
     engine.drawText("My schematic:", 2);
 
-    engine.bitmap(x, y, bitmap);
+    engine.Schematic(x, y, bitmap, 0, 0, 0);
 
     if (framessostate > 500) {
         framessostate = 0;
@@ -216,10 +216,10 @@ void DrawImage(uint16_t line_number, const unsigned char *bitmap) {
    // engine.drawText("My image:", 2);
 engine.clear();
    //engine.LoadBitmap((uint8_t *)image_6_ntsc, 8000);
-//engine.bitmap(0,0, image_6_ntsc,  0,    320,   200 );
+engine.bitmap(0,0, image_6_ntsc,  0,    320,   200 );
 //engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
                 
-engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
+//engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
 
 
 
@@ -230,6 +230,9 @@ engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
     engine.delay(500); // Slow down the animation for visibility
 }
 
+void TVlogo() {
+    engine.intro();
+}
 
 // ------------------------------------------------------------
 // Arduino Setup
@@ -280,6 +283,14 @@ void loop() {
         case 6:
           //  DrawLenabmp();
             DrawImage(10, image_5_ntsc); // Render the image line by line
+            break;
+        case 7:
+            TVlogo();
+            break;
+        default:
+            engine.setColor(1);
+            engine.setPen(60, 10);
+            engine.drawText("Mode not implemented.", 2);
             break;
     }
 

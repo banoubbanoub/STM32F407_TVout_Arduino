@@ -39,7 +39,8 @@ public:
 
     void LoadBitmap(const uint8_t* pImg, uint16_t imgSize);
     void render_ntsc_line(uint16_t line_number, uint8_t *line_buffer);
-
+    void Schematic(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines);
+    void  intro();
     // Double Buffering Controls
     bool setDoubleBuffering(bool enable, uint8_t* externalBuffer = nullptr);
     void display(); // Pushes off-screen back buffer to active screen VRAM
