@@ -350,30 +350,24 @@ void Engine3D::intro()
 
     clear_screen();
 }
+
 void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines) 
 {
-   
-
-         if (!bmp || width == 0 || lines == 0)
+    if (!bmp || width == 0 || lines == 0)
         return;
 
     const uint16_t srcBytes = (width + 7) >> 3;
-
     const uint16_t dstByte = x >> 3;
     const uint8_t shift = x & 7;
 
     for (uint16_t row = 0; row < lines; row++)
     {
         const uint8_t *src = bmp + i + row * srcBytes;
-
-        uint8_t *dst =
-            _screen + (y + row) * _hres + dstByte;
+        uint8_t *dst = _screen + (y + row) * _hres + dstByte;
 
         if (shift == 0)
         {
-            // -----------------------------
-            // Byte aligned
-            // -----------------------------
+            // Byte aligned: Direct memory copy
             for (uint16_t b = 0; b < srcBytes; b++)
             {
                 dst[b] = src[b];
@@ -381,53 +375,31 @@ void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_
         }
         else
         {
-            // -----------------------------
-            // Pixel aligned
-            // -----------------------------
-
+            // Bit aligned across byte boundaries
             for (uint16_t b = 0; b < srcBytes; b++)
             {
                 uint8_t cur = src[b];
-
-                // Bits going into current byte
                 uint8_t left = cur >> shift;
-
-                // Bits going into next byte
                 uint8_t right = cur << (8 - shift);
 
                 if (b == 0)
                 {
-                    // Preserve pixels before x
                     uint8_t mask = 0xFF << (8 - shift);
-
-                    dst[0] =
-                        (dst[0] & mask) | left;
+                    dst[0] = (dst[0] & mask) | left;
                 }
                 else
                 {
-                    dst[b] |= left;
+                    dst[b] = left;
                 }
 
-                dst[b + 1] |= right;
+                // Mask off lower bits before applying right shift
+                uint8_t nextMask = 0xFF >> (8 - shift);
+                dst[b + 1] = (dst[b + 1] & nextMask) | right;
             }
         }
     }
 }
 
-/*
-void Engine3D::LoadBitmap(uint8_t* pImg) {
-  
-
-    
-       uint8_t* target = getBackBuffer();
-
-    if (!target || !pImg)
-        return;
-
-    memcpy(target, pImg, 8000);
-
-    }
-    */
 
     void Engine3D::LoadBitmap(const uint8_t* pImg, uint16_t imgSize) {
        uint8_t* target = getBackBuffer();

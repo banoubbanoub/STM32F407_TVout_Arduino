@@ -5,6 +5,7 @@ import importlib
 
 try:
     Image = importlib.import_module("PIL.Image")
+    ImageOps = importlib.import_module("PIL.ImageOps")
 except ModuleNotFoundError as exc:
     raise SystemExit(
         "Pillow is required. Install it with: python -m pip install Pillow"
@@ -14,7 +15,7 @@ except ModuleNotFoundError as exc:
 def select_image_file():
     root = tk.Tk()
     root.withdraw()
-    root.attributes("-topmost", True)  # Bring picker window to front
+    root.attributes("-topmost", True)
 
     file_path = filedialog.askopenfilename(
         title="Select Image to Convert for STM32 NTSC",
@@ -35,23 +36,27 @@ def image_to_c_array(image_path, output_header, width=320, height=200):
     # Load image and convert to grayscale
     img = Image.open(image_path).convert("L")
 
-    # Resize image to target NTSC resolution
-    img = img.resize((width, height), Image.Resampling.LANCZOS)
+    # Fit entire image into 320x200 without cropping (adds black padding if aspect ratio differs)
+    img = ImageOps.contain(img, (width, height), method=Image.Resampling.LANCZOS)
+
+    # Create a blank black canvas of target size and paste the scaled image centered
+    canvas = Image.new("L", (width, height), 0)  # 0 for black background
+    offset = ((width - img.width) // 2, (height - img.height) // 2)
+    canvas.paste(img, offset)
 
     # Apply Floyd-Steinberg dithering for 1-bit monochrome output
-    img = img.convert("1", dither=Image.Dither.FLOYDSTEINBERG)
+    img = canvas.convert("1", dither=Image.Dither.FLOYDSTEINBERG)
 
     pixels = img.load()
     bytes_per_row = width // 8
 
-    c_code = []
-    c_code.append("#include <stdint.h>\n")
-    c_code.append(f"// Source Image: {os.path.basename(image_path)}")
-    c_code.append(f"// Resolution: {width}x{height}")
-    c_code.append(f"// Size: {bytes_per_row * height} bytes\n")
-    c_code.append(
+    c_code = [
+        "#include <stdint.h>\n",
+        f"// Source Image: {os.path.basename(image_path)}",
+        f"// Resolution: {width}x{height}",
+        f"// Size: {bytes_per_row * height} bytes\n",
         f"const uint8_t image_ntsc[{bytes_per_row * height}] __attribute__((aligned(4))) = {{"
-    )
+    ]
 
     for y in range(height):
         row_bytes = []
@@ -71,10 +76,9 @@ def image_to_c_array(image_path, output_header, width=320, height=200):
     with open(output_header, "w") as f:
         f.write("\n".join(c_code))
 
-    print(f"\nSuccess! Header generated on Desktop: {os.path.abspath(output_header)}")
+    print(f"\nSuccess! Header generated: {os.path.abspath(output_header)}")
 
 
-# Target the Desktop directory explicitly
 desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
 output_file = os.path.join(desktop_dir, "image_data.h")
 

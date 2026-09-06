@@ -51,6 +51,11 @@ const uint8_t TOTAL_MODES = 10; // Modes 0 to 9
 bool lastButtonState = LOW;
 int16_t framessostate = 0;
 
+// State variables
+int counter = 0;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50; // 50ms debounce time
+
 // Terminal State
 char terminal[TERMINAL_ROWS][TERMINAL_COLS + 1];
 uint16_t cursorX = 0;
@@ -438,12 +443,31 @@ void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
 }
 
 void DrawImage(uint16_t imge_number) {
-    engine.clear();
-    //engine.bitmap(0, 0, image_6_ntsc, 0, 320, 200);
-    engine.bitmap(4, 10, image_9_ntsc, 0, 320, 200);
-  //  engine.bitmap(4, 4, image_11_ntsc, 0, 320, 200);
-    if (framessostate > 500) framessostate = 0;
-    engine.delay(500);
+    // Store image pointers in an array for clean indexing (0 to 9)
+  const uint8_t* image_list[10] = {
+    image_1_ntsc, // counter = 0
+    image_1_ntsc, // counter = 1
+    image_2_ntsc, // counter = 2
+    image_3_ntsc, // counter = 3
+    image_4_ntsc, // counter = 4
+    image_5_ntsc, // counter = 5
+    image_6_ntsc, // counter = 6
+    image_7_ntsc, // counter = 7
+    image_8_ntsc, // counter = 8 
+    image_9_ntsc  // counter = 9 
+  };
+
+  engine.clear();
+
+  // Safety check to prevent out-of-bounds array reads (prevents crash)
+  if (imge_number < 10) {
+    //engine.bitmap(0, 0, image_list[imge_number], 0, 320, 200);
+    engine.LoadBitmap(image_list[imge_number], 8000); // Assuming each image is 8000 bytes
+  } else {
+    //engine.bitmap(0, 0, image_1_ntsc, 0, 320, 200);
+    engine.LoadBitmap(image_1_ntsc, 8000); // Fallback to first image if out of bounds
+  }
+ // engine.delay(100); // Optional delay for visual effect
 }
 
 void TVlogo() {
@@ -471,6 +495,7 @@ void setup() {
 // Main Loop
 // ------------------------------------------------------------
 void loop() {
+    /*
     bool currentButtonState = digitalRead(USER_BUTTON_PIN);
     if (currentButtonState == HIGH && lastButtonState == LOW) {
         currentMode = (currentMode + 1) % TOTAL_MODES;
@@ -527,7 +552,35 @@ void loop() {
             engine.drawText("Mode not implemented.", 2);
             break;
     }
+            */
 
-    engine.display();
-    framessostate++;
+ int currentButtonState = digitalRead(USER_BUTTON_PIN);
+
+  // Check if state changed
+  if (currentButtonState != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    static int buttonState = HIGH;
+
+    if (currentButtonState != buttonState) {
+      buttonState = currentButtonState;
+
+      // Execute action only on button press (falling edge)
+      if (buttonState == LOW) {
+        counter++;
+        if (counter > 9) {
+          counter = 0; // Reset after 9
+        }
+
+        // Draw and update display ONLY when counter changes
+       // DrawImage(counter);
+        //engine.display(); 
+      }
+    }
+  }
+    DrawImage(counter);
+        engine.display(); 
+  lastButtonState = currentButtonState;
 }
