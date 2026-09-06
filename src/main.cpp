@@ -1,41 +1,71 @@
 #include <Arduino.h>
+#include <SPI.h>
+#include <RF24.h>
 #include <Engine3D.h>
+
 #include "schematic.h"
 #include "lenabmp.h"
 #include "rectbmp.h"
 #include "image_data.h"
-// Define the User Button pin for STM32F407 DISCOVERY
+
+// ------------------------------------------------------------
+// Pin Definitions & Display Configuration
+// ------------------------------------------------------------
 #define USER_BUTTON_PIN PA0
 
-// Track active display mode and button state
-uint8_t currentMode = 0;
-const uint8_t TOTAL_MODES = 9;
-bool lastButtonState = LOW;
+#define CE_PIN   PB10
+#define CSN_PIN  PB12
 
-Engine3D engine;
-int16_t framessostate = 0;
-
-// ------------------------------------------------------------
-// Display configuration
-// ------------------------------------------------------------
 #define SCREEN_WIDTH   320
 #define SCREEN_HEIGHT  200
 
 // ------------------------------------------------------------
-// Height function (Rippling Wave Effect)
+// Terminal Configuration
+// ------------------------------------------------------------
+#define TEXT_SCALE     2
+#define CHAR_WIDTH     7
+#define CHAR_HEIGHT    14
+
+#define TERMINAL_LEFT  30
+#define TERMINAL_TOP   25
+
+#define TERMINAL_COLS  ((SCREEN_WIDTH - TERMINAL_LEFT * 2) / CHAR_WIDTH)
+#define TERMINAL_ROWS  ((SCREEN_HEIGHT - TERMINAL_TOP - 5) / CHAR_HEIGHT)
+#define CURSOR_INTERVAL 500
+
+// ------------------------------------------------------------
+// Global Objects & Mode State
+// ------------------------------------------------------------
+SPIClass SPI_2(PB15, PB14, PB13);  // MOSI, MISO, SCK
+RF24 radio(CE_PIN, CSN_PIN);
+const byte address[6] = "00001";
+
+Engine3D engine;
+
+uint8_t currentMode = 0;
+const uint8_t TOTAL_MODES = 9;
+bool lastButtonState = LOW;
+int16_t framessostate = 0;
+
+// Terminal State
+char terminal[TERMINAL_ROWS][TERMINAL_COLS + 1];
+uint16_t cursorX = 0;
+uint16_t cursorY = 0;
+bool cursorVisible = true;
+uint32_t lastCursorTime = 0;
+bool rf24Initialized = false;
+
+// ------------------------------------------------------------
+// Math & Engine Helpers
 // ------------------------------------------------------------
 int16_t Height(int x, int y, int l) {
     return engine.cosFixed((x * x + y * y) + l);
 }
 
-// ------------------------------------------------------------
-// Setup projection & camera matrices
-// ------------------------------------------------------------
 void SetupMatrix() {
     engine.identity(engine.projectionMatrix);
     engine.identity(engine.modelviewMatrix);
     
-    // Set perspective projection matched to 320x200 viewport
     engine.perspective(
         600,    // Field of view parameter
         250,    // Aspect ratio / scaling
@@ -44,12 +74,151 @@ void SetupMatrix() {
         engine.projectionMatrix
     );
 
-    // Apply fixed camera tilt to Projection Matrix
     engine.rotateEuler(engine.projectionMatrix, -20, 0, 0);
 }
 
 // ------------------------------------------------------------
-// Mode 0: Dynamic 3D Mesh
+// Terminal Functions
+// ------------------------------------------------------------
+void clearTerminalBuffer() {
+    for (uint16_t y = 0; y < TERMINAL_ROWS; y++) {
+        for (uint16_t x = 0; x < TERMINAL_COLS; x++) {
+            terminal[y][x] = ' ';
+        }
+        terminal[y][TERMINAL_COLS] = '\0';
+    }
+    cursorX = 0;
+    cursorY = 0;
+}
+
+void scrollTerminal() {
+    for (uint16_t y = 1; y < TERMINAL_ROWS; y++) {
+        memcpy(terminal[y - 1], terminal[y], TERMINAL_COLS + 1);
+    }
+
+    for (uint16_t x = 0; x < TERMINAL_COLS; x++) {
+        terminal[TERMINAL_ROWS - 1][x] = ' ';
+    }
+    terminal[TERMINAL_ROWS - 1][TERMINAL_COLS] = '\0';
+
+    cursorY = TERMINAL_ROWS - 1;
+}
+
+void terminalNewLine() {
+    cursorX = 0;
+    cursorY++;
+
+    if (cursorY >= TERMINAL_ROWS) {
+        scrollTerminal();
+    }
+}
+
+void terminalPutChar(char c) {
+    if (c == '\r' || c == '\n') {
+        terminalNewLine();
+        return;
+    }
+
+    if (c == 127 || c == '\b') {
+        if (cursorX > 0) {
+            cursorX--;
+            terminal[cursorY][cursorX] = ' ';
+        }
+        return;
+    }
+
+    if (c == '\t') {
+        uint16_t spaces = 4 - (cursorX & 3);
+        while (spaces--) {
+            terminalPutChar(' ');
+        }
+        return;
+    }
+
+    if (c < 32 || c > 126) {
+        return;
+    }
+
+    if (cursorX >= TERMINAL_COLS) {
+        terminalNewLine();
+    }
+
+    terminal[cursorY][cursorX] = c;
+    cursorX++;
+
+    if (cursorX >= TERMINAL_COLS) {
+        terminalNewLine();
+    }
+}
+
+void initRF24() {
+    SPI_2.begin();
+    clearTerminalBuffer();
+
+    if (!radio.begin(&SPI_2)) {
+        const char *err = "RF24 INIT FAILED!";
+        while (*err) terminalPutChar(*err++);
+        rf24Initialized = false;
+        return;
+    }
+
+    radio.openReadingPipe(0, address);
+    radio.setPALevel(RF24_PA_LOW);
+    radio.startListening();
+    rf24Initialized = true;
+
+    terminalPutChar('>');
+    terminalPutChar(' ');
+    const char *msg = "Ready";
+    while (*msg) terminalPutChar(*msg++);
+    terminalNewLine();
+    terminalPutChar('>');
+    terminalPutChar(' ');
+}
+
+void DrawTerminalMode() {
+    // Check for incoming wireless data
+    if (rf24Initialized && radio.available()) {
+        char receivedChar;
+        radio.read(&receivedChar, sizeof(receivedChar));
+        terminalPutChar(receivedChar);
+    }
+
+    // Handle cursor blink timer
+    uint32_t now = millis();
+    if ((now - lastCursorTime) >= CURSOR_INTERVAL) {
+        lastCursorTime = now;
+        cursorVisible = !cursorVisible;
+    }
+
+    // Render Title
+    engine.setColor(1);
+    engine.setPen(60, 5);
+    engine.drawText("WIRELESS TERMINAL", 2);
+
+    // Render Text Rows
+    for (uint16_t y = 0; y < TERMINAL_ROWS; y++) {
+        engine.setPen(TERMINAL_LEFT, TERMINAL_TOP + y * CHAR_HEIGHT);
+        engine.drawText(terminal[y], TEXT_SCALE);
+    }
+
+    // Render Cursor
+    if (cursorVisible) {
+        int cursorPixelX = TERMINAL_LEFT + cursorX * CHAR_WIDTH;
+        int cursorPixelY = TERMINAL_TOP + cursorY * CHAR_HEIGHT;
+
+        engine.line(
+            cursorPixelX,
+            cursorPixelY + CHAR_HEIGHT - 2,
+            cursorPixelX + CHAR_WIDTH - 1,
+            cursorPixelY + CHAR_HEIGHT - 2,
+            1
+        );
+    }
+}
+
+// ------------------------------------------------------------
+// Display Modes
 // ------------------------------------------------------------
 void DrawMesh() {
     SetupMatrix();
@@ -76,14 +245,9 @@ void DrawMesh() {
         }
     }
 
-    if (framessostate > 300) {
-        framessostate = 0;
-    }
+    if (framessostate > 300) framessostate = 0;
 }
 
-// ------------------------------------------------------------
-// Mode 1: Sphere Grid
-// ------------------------------------------------------------
 void DrawSphere() {
     SetupMatrix();
     engine.rotateEuler(engine.modelviewMatrix, framessostate, 0, 0);
@@ -96,19 +260,14 @@ void DrawSphere() {
         for (int x = 0; x < 40; x++) {
             engine.modelviewMatrix[11] = 1000 + engine.sinFixed((x + y) * 40 + framessostate * 2);
             engine.modelviewMatrix[3]  = 500 * x - 850;
-            engine.modelviewMatrix[7]  = 600 * y - 50; // Fixed duplicate write
+            engine.modelviewMatrix[7]  = 600 * y - 50;
             engine.drawGeoSphere();
         }
     }
 
-    if (framessostate > 300) {
-        framessostate = 0;
-    }
+    if (framessostate > 300) framessostate = 0;
 }
 
-// ------------------------------------------------------------
-// Mode 2: Multi-Sphere Array
-// ------------------------------------------------------------
 void Draw3DEngine() {
     SetupMatrix();
     engine.rotateEuler(engine.modelviewMatrix, framessostate, 0, 0);
@@ -126,14 +285,9 @@ void Draw3DEngine() {
         }
     }
 
-    if (framessostate > 300) {
-        framessostate = 0;
-    }
+    if (framessostate > 300) framessostate = 0;
 }
 
-// ------------------------------------------------------------
-// Mode 3: Random Lines Benchmark
-// ------------------------------------------------------------
 void Lines_on_double_buffered_232x220() {
     engine.setColor(1);
     engine.setPen(40, 10);
@@ -150,14 +304,9 @@ void Lines_on_double_buffered_232x220() {
         }
     }
 
-    if (framessostate > 300) {
-        framessostate = 0;
-    }
+    if (framessostate > 300) framessostate = 0;
 }
 
-// ------------------------------------------------------------
-// Mode 4: Text Modulation / DMA Demo
-// ------------------------------------------------------------
 void Direct_modulation() {
     const char *s = "Direct modulation.\nDMA through the SPI Bus!\nTry it yourself!\n\nSTM32F407 DISC1\n";
     int len = strlen(s);
@@ -171,14 +320,9 @@ void Direct_modulation() {
     engine.setPen(40, 10);
     engine.drawText(lastct, 2);
 
-    if (framessostate > 500) {
-        framessostate = 0;
-    }
+    if (framessostate > 500) framessostate = 0;
 }
 
-// ------------------------------------------------------------
-// Mode 5: Schematic View
-// ------------------------------------------------------------
 void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
     engine.setColor(1);
     engine.setPen(60, 10);
@@ -186,57 +330,29 @@ void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
 
     engine.Schematic(x, y, bitmap, 0, 0, 0);
 
-    if (framessostate > 500) {
-        framessostate = 0;
-    }
-    engine.delay(50); // Slow down the animation for visibility
-}
-
-// ------------------------------------------------------------
-// Mode 6: Bitmap Image Switcher
-// ------------------------------------------------------------
- 
-void DrawLenabmp() {
- //engine.clear();
- 
-//engine.LoadBitmap((uint8_t *)image_5_ntsc);
-    if (framessostate > 500) {
-        framessostate = 0;
-    }
-    //engine.delay(80); // Slow down the animation for visibility
-   // engine.display(); // Display the loaded bitmap
-
-
+    if (framessostate > 500) framessostate = 0;
+    engine.delay(50);
 }
 
 void DrawImage(uint16_t line_number, const unsigned char *bitmap) {
-    //engine.setColor(1);
-  // engine.setPen(60, 10);
-   // engine.drawText("My image:", 2);
-engine.clear();
-   //engine.LoadBitmap((uint8_t *)image_6_ntsc, 8000);
-engine.bitmap(0,0, image_6_ntsc,  0,    320,   200 );
-//engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
-                
-//engine.bitmap(4,10, image_9_ntsc,  0,    320,   200 );
+    engine.clear();
+    engine.bitmap(0, 0, image_6_ntsc, 0, 320, 200);
 
-
-
-   // engine.render_ntsc_line(line_number, (uint8_t *)bitmap); // Render the bitmap line by line
-    if (framessostate > 500) {
-        framessostate = 0;
-    }
-    engine.delay(500); // Slow down the animation for visibility
+    if (framessostate > 500) framessostate = 0;
+    engine.delay(500);
 }
 
 void TVlogo() {
-  engine.intro();
+    engine.intro();
 }
 
 // ------------------------------------------------------------
-// Arduino Setup
+// Setup
 // ------------------------------------------------------------
 void setup() {
+    // Flash acceleration to avoid AHB stalls
+    FLASH->ACR |= FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
+
     pinMode(USER_BUTTON_PIN, INPUT);
     engine.begin();
     engine.setDoubleBuffering(true);
@@ -244,22 +360,28 @@ void setup() {
 }
 
 // ------------------------------------------------------------
-// Arduino Main Loop
+// Main Loop
 // ------------------------------------------------------------
 void loop() {
-    // Handle button press with debouncing
+    // Mode Switcher (User Button on PA0)
     bool currentButtonState = digitalRead(USER_BUTTON_PIN);
     if (currentButtonState == HIGH && lastButtonState == LOW) {
         currentMode = (currentMode + 1) % TOTAL_MODES;
-        framessostate = 0; // Reset animation frame counter on mode change
-        delay(50);         // Simple debounce
+        framessostate = 0;
+
+        // Initialize RF24 upon switching into Mode 7
+        if (currentMode == 7) {
+            initRF24();
+        }
+
+        delay(50); // Debounce
     }
     lastButtonState = currentButtonState;
 
-    // Clear off-screen frame buffer
+    // Clear Backbuffer
     engine.clear();
 
-    // Render selected mode
+    // Mode Dispatcher
     switch (currentMode) {
         case 0:
             DrawMesh();
@@ -280,10 +402,12 @@ void loop() {
             DrawSchematic(60, 60, schematic);
             break;
         case 6:
-          //  DrawLenabmp();
-            DrawImage(10, image_5_ntsc); // Render the image line by line
+            DrawImage(10, image_5_ntsc);
             break;
         case 7:
+            DrawTerminalMode();
+            break;
+        case 8:
             TVlogo();
             break;
         default:
@@ -293,333 +417,8 @@ void loop() {
             break;
     }
 
-    // Display backbuffer to screen
+    // Display backbuffer frame
     engine.display();
 
-    // Increment frame counter
     framessostate++;
 }
-
-
-
-//////////////////////////////////////////////////////////////////
-/////////////////////////
-///////////////////
-///////////////////////////////////////////////////////
-
-/*
-#include <Arduino.h>
-#include <SPI.h>
-#include <RF24.h>
-
-#include "Engine3D.h"
-
-SPIClass SPI_2(PB15, PB14, PB13);  // MOSI, MISO, SCK
-
-// ============================================================================
-// nRF24L01
-// ============================================================================
-
-#define CE_PIN   PB10
-#define CSN_PIN  PB12
-
-RF24 radio(CE_PIN, CSN_PIN);
-
-const byte address[6] = "00001";
-
-// ============================================================================
-// TERMINAL CONFIGURATION
-// ============================================================================
-
-#define SCREEN_WIDTH   320
-#define SCREEN_HEIGHT  200
-
-#define TEXT_SCALE     2
-
-// Your Engine3D font character cell sizing
-#define CHAR_WIDTH     7
-#define CHAR_HEIGHT    14
-
-#define TERMINAL_LEFT  30
-#define TERMINAL_TOP   25
-
-#define TERMINAL_COLS  ((SCREEN_WIDTH - TERMINAL_LEFT * 2) / CHAR_WIDTH)
-#define TERMINAL_ROWS  ((SCREEN_HEIGHT - TERMINAL_TOP - 5) / CHAR_HEIGHT)
-
-// ============================================================================
-// TERMINAL BUFFER
-// ============================================================================
-
-char terminal[TERMINAL_ROWS][TERMINAL_COLS + 1];
-
-uint16_t cursorX = 0;
-uint16_t cursorY = 0;
-
-// ============================================================================
-// CURSOR
-// ============================================================================
-
-bool cursorVisible = true;
-uint32_t lastCursorTime = 0;
-
-#define CURSOR_INTERVAL 500
-
-// ============================================================================
-// ENGINE
-// ============================================================================
-
-Engine3D engine;
-
-// ============================================================================
-// CLEAR TERMINAL BUFFER
-// ============================================================================
-
-void clearTerminalBuffer()
-{
-    for (uint16_t y = 0; y < TERMINAL_ROWS; y++)
-    {
-        for (uint16_t x = 0; x < TERMINAL_COLS; x++)
-        {
-            terminal[y][x] = ' ';
-        }
-
-        terminal[y][TERMINAL_COLS] = '\0';
-    }
-
-    cursorX = 0;
-    cursorY = 0;
-}
-
-// ============================================================================
-// SCROLL TERMINAL UP ONE LINE
-// ============================================================================
-
-void scrollTerminal()
-{
-    for (uint16_t y = 1; y < TERMINAL_ROWS; y++)
-    {
-        memcpy(terminal[y - 1], terminal[y], TERMINAL_COLS + 1);
-    }
-
-    // Clear bottom line
-    for (uint16_t x = 0; x < TERMINAL_COLS; x++)
-    {
-        terminal[TERMINAL_ROWS - 1][x] = ' ';
-    }
-
-    terminal[TERMINAL_ROWS - 1][TERMINAL_COLS] = '\0';
-
-    cursorY = TERMINAL_ROWS - 1;
-}
-
-// ============================================================================
-// NEW LINE
-// ============================================================================
-
-void terminalNewLine()
-{
-    cursorX = 0;
-    cursorY++;
-
-    if (cursorY >= TERMINAL_ROWS)
-    {
-        scrollTerminal();
-    }
-}
-
-// ============================================================================
-// PUT CHARACTER
-// ============================================================================
-
-void terminalPutChar(char c)
-{
-    // ENTER
-    if (c == '\r' || c == '\n')
-    {
-        terminalNewLine();
-        return;
-    }
-
-    // BACKSPACE
-    if (c == 127 || c == '\b')
-    {
-        if (cursorX > 0)
-        {
-            cursorX--;
-            terminal[cursorY][cursorX] = ' ';
-        }
-        return;
-    }
-
-    // TAB
-    if (c == '\t')
-    {
-        uint16_t spaces = 4 - (cursorX & 3);
-        while (spaces--)
-        {
-            terminalPutChar(' ');
-        }
-        return;
-    }
-
-    // IGNORE NON-PRINTABLE CHARACTERS
-    if (c < 32 || c > 126)
-    {
-        return;
-    }
-
-    // AUTOMATIC WRAP BEFORE PRINTING
-    if (cursorX >= TERMINAL_COLS)
-    {
-        terminalNewLine();
-    }
-
-    // STORE CHARACTER
-    terminal[cursorY][cursorX] = c;
-    cursorX++;
-
-    // AUTOMATIC WRAP AFTER PRINTING
-    if (cursorX >= TERMINAL_COLS)
-    {
-        terminalNewLine();
-    }
-}
-
-// ============================================================================
-// DRAW TERMINAL
-// ============================================================================
-
-void drawTerminal()
-{
-    // Clear off-screen back buffer
-    engine.fill(BLACK);
-    engine.setColor(WHITE);
-
-    // TITLE
-    engine.setPen(60, 5);
-    engine.drawText("WIRELESS TERMINAL", 2);
-
-    // TERMINAL TEXT
-    for (uint16_t y = 0; y < TERMINAL_ROWS; y++)
-    {
-        engine.setPen(TERMINAL_LEFT, TERMINAL_TOP + y * CHAR_HEIGHT);
-        engine.drawText(terminal[y], TEXT_SCALE);
-    }
-
-    // CURSOR
-    if (cursorVisible)
-    {
-        int cursorPixelX = TERMINAL_LEFT + cursorX * CHAR_WIDTH;
-        int cursorPixelY = TERMINAL_TOP + cursorY * CHAR_HEIGHT;
-
-        engine.line(
-            cursorPixelX,
-            cursorPixelY + CHAR_HEIGHT - 2,
-            cursorPixelX + CHAR_WIDTH - 1,
-            cursorPixelY + CHAR_HEIGHT - 2,
-            WHITE
-        );
-    }
-
-    // Push the backbuffer frame to VRAM
-    engine.display();
-}
-
-// ============================================================================
-// CURSOR BLINK
-// ============================================================================
-
-void updateCursor()
-{
-    uint32_t now = millis();
-
-    if ((now - lastCursorTime) >= CURSOR_INTERVAL)
-    {
-        lastCursorTime = now;
-        cursorVisible = !cursorVisible;
-        drawTerminal();
-    }
-}
-
-// ============================================================================
-// SETUP
-// ============================================================================
-
-void setup()
-{
-    // 1. Enable Flash Acceleration to prevent AHB bus stalls
-    FLASH->ACR |= FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
-
-    // START ENGINE3D + TNTSC
-    engine.begin();
-    
-    // Enable double buffering for clean updates
-    engine.setDoubleBuffering(true);
-
-    SPI_2.begin();
-
-    // INITIAL TERMINAL
-    clearTerminalBuffer();
-    engine.setColor(WHITE);
-    drawTerminal();
-
-    // START nRF24
-    if (!radio.begin(&SPI_2))
-    {
-        engine.fill(BLACK);
-        engine.setPen(40, 20);
-        engine.setColor(WHITE);
-        engine.drawText("RF24 INIT FAILED", 2);
-        engine.display();
-
-        while (1)
-        {
-        }
-    }
-
-    radio.openReadingPipe(0, address);
-    radio.setPALevel(RF24_PA_LOW);
-    radio.startListening();
-
-    // READY MESSAGE
-    terminalPutChar('>');
-    terminalPutChar(' ');
-
-    const char *msg = "Ready";
-    while (*msg)
-    {
-        terminalPutChar(*msg++);
-    }
-
-    terminalNewLine();
-
-    terminalPutChar('>');
-    terminalPutChar(' ');
-
-    drawTerminal();
-
-    lastCursorTime = millis();
-}
-
-// ============================================================================
-// MAIN LOOP
-// ============================================================================
-
-void loop()
-{
-    // RECEIVE KEYBOARD DATA
-    if (radio.available())
-    {
-        char receivedChar;
-        radio.read(&receivedChar, sizeof(receivedChar));
-
-        terminalPutChar(receivedChar);
-
-        // Immediately redraw the updated terminal state
-        drawTerminal();
-    }
-
-    // CURSOR BLINK
-    updateCursor();
-}
-    */
