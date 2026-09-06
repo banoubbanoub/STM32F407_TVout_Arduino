@@ -29,12 +29,12 @@ public:
     void end() { _tntsc->end(); }; 
     void adjust(int16_t cnt, int16_t hcnt = 0, int16_t vcnt = 0);
    
-  void bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i = 0, uint16_t width = 0, uint16_t lines = 0);
-	  void bitmap8(uint8_t x, uint8_t y, const unsigned char * bmp, uint16_t i = 0, uint8_t width = 0, uint8_t lines = 0) 
+    void bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i = 0, uint16_t width = 0, uint16_t lines = 0);
+	void bitmap8(uint8_t x, uint8_t y, const unsigned char * bmp, uint16_t i = 0, uint8_t width = 0, uint8_t lines = 0) 
 		 { bitmap((uint8_t)x,(uint8_t)y,bmp,i,width,lines); };
 
-         void delay(uint32_t x) {::delay(x);};  // delay (milliseconds)
-           uint16_t hres() {return _width;} ;  // Get horizontal pixel count
+    void delay(uint32_t x) {::delay(x);};  // delay (milliseconds)
+    uint16_t hres() {return _width;} ;  // Get horizontal pixel count
     uint16_t vres() {return _height;} ;  // Get vertical pixel count
 
     void LoadBitmap(const uint8_t* pImg, uint16_t imgSize);
@@ -132,7 +132,7 @@ private:
     uint16_t  _width;
     uint16_t  _height;
     uint16_t  _hres;            // Horizontal byte stride
-    uint16_t  _vres;
+    uint16_t  _vres;            // Vertical pixel count
 
     uint16_t _cursorX;
     uint16_t _cursorY;
