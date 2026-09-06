@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <Engine3D.h>
 #include "schematic.h"
-
 #include "lenabmp.h"
 #include "rectbmp.h"
 #include "image_data.h"
@@ -10,7 +9,7 @@
 
 // Track active display mode and button state
 uint8_t currentMode = 0;
-const uint8_t TOTAL_MODES = 8;
+const uint8_t TOTAL_MODES = 9;
 bool lastButtonState = LOW;
 
 Engine3D engine;
@@ -231,7 +230,7 @@ engine.bitmap(0,0, image_6_ntsc,  0,    320,   200 );
 }
 
 void TVlogo() {
-    engine.intro();
+  engine.intro();
 }
 
 // ------------------------------------------------------------

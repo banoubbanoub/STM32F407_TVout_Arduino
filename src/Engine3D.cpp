@@ -228,6 +228,7 @@ void Engine3D::Schematic(uint16_t x, uint16_t y, const unsigned char * bmp, uint
     }
 }
 
+/*
 void Engine3D::intro()
 {
     
@@ -243,11 +244,11 @@ void Engine3D::intro()
         clear_screen();
 
         // Adjust Y dynamically so the visible portion stays centrally aligned
-        uint16_t currentY =  startY + ((h - lines) >> 1);
+        uint16_t currentY = 80;
 
         // Render 'lines' rows starting from the top offset of the bitmap
         Schematic(
-            x,
+            80,
             currentY,
             TVOlogo,
             2,
@@ -262,7 +263,93 @@ void Engine3D::intro()
 
     clear_screen();
 }
+    */
 
+    /*
+    void Engine3D::intro()
+{
+    const uint16_t w = TVOlogo[0];   // 96 pixels
+    const uint16_t h = TVOlogo[1];   // 32 pixels
+
+    // Target final position (center of the screen)
+    const int16_t targetX = (hres() - w) >> 1;
+    const int16_t targetY = (vres() - h) >> 1;
+
+    // Starting position (Top-Right, off-screen or top edge)
+    const int16_t startX = hres() - w;
+    const int16_t startY = 0;
+
+    // Number of steps for the motion animation
+    const uint16_t totalSteps = 30;
+
+    for (uint16_t step = 0; step <= totalSteps; step++)
+    {
+        clear_screen();
+
+        // Linearly interpolate coordinates from Top-Right (startX, startY) to Center (targetX, targetY)
+        int16_t currentX = startX + ((targetX - startX) * step) / totalSteps;
+        int16_t currentY = startY + ((targetY - startY) * step) / totalSteps;
+
+        // Render full image at the calculated coordinates
+        Schematic(
+            (uint16_t)currentX,
+            (uint16_t)currentY,
+            TVOlogo,
+            2,
+            w,
+            h
+        );
+
+        delay(30);
+    }
+
+    // Hold the logo in the center
+    delay(2000);
+
+    clear_screen();
+}
+*/
+
+void Engine3D::intro()
+{
+    const uint16_t w = TVOlogo[0];   // 96 pixels
+    const uint16_t h = TVOlogo[1];   // 32 pixels
+
+    // Coordinates
+    const int16_t startX  = 0;                // Left edge
+    const int16_t endX    = hres() - w;       // Right edge
+    const int16_t targetX = (hres() - w) >> 1; // Center X
+    const int16_t centerY = (vres() - h) >> 1; // Center Y
+
+    const uint16_t stepsPerPhase = 30;
+
+    // Phase 1: Move from Left to Right
+    for (uint16_t step = 0; step <= stepsPerPhase; step++)
+    {
+        clear_screen();
+
+        int16_t currentX = startX + ((endX - startX) * step) / stepsPerPhase;
+
+        Schematic((uint16_t)currentX, (uint16_t)centerY, TVOlogo, 2, w, h);
+        delay(30);
+    }
+
+    // Phase 2: Move from Right back to Center (Right to Left)
+    for (uint16_t step = 0; step <= stepsPerPhase; step++)
+    {
+        clear_screen();
+
+        int16_t currentX = endX + ((targetX - endX) * step) / stepsPerPhase;
+
+        Schematic((uint16_t)currentX, (uint16_t)centerY, TVOlogo, 2, w, h);
+        delay(30);
+    }
+
+    // Hold the logo centered
+    delay(2000);
+
+    clear_screen();
+}
 void Engine3D::bitmap(uint16_t x, uint16_t y, const unsigned char * bmp, uint16_t i, uint16_t width, uint16_t lines) 
 {
    
