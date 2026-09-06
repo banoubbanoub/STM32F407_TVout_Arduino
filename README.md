@@ -118,6 +118,8 @@ The project can be adapted for common STM32 development environments such as:
 
 Hardware configuration and pin assignments may need to be adjusted for different STM32F4 boards.
 
+https://www.instructables.com/STM32F407-DISC1-Composite-Video-Output/
+
 ## License
 
 This project is **free and open source**.
