@@ -343,6 +343,7 @@ void DrawImage(uint16_t line_number, const unsigned char *bitmap) {
 }
 
 void TVlogo() {
+    engine.clear();
     engine.intro();
 }
 
