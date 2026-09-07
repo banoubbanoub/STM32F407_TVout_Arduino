@@ -495,7 +495,7 @@ void setup() {
 // Main Loop
 // ------------------------------------------------------------
 void loop() {
-    /*
+    
     bool currentButtonState = digitalRead(USER_BUTTON_PIN);
     if (currentButtonState == HIGH && lastButtonState == LOW) {
         currentMode = (currentMode + 1) % TOTAL_MODES;
@@ -552,8 +552,11 @@ void loop() {
             engine.drawText("Mode not implemented.", 2);
             break;
     }
-            */
+            engine.display(); // Update the display after drawing the current mode
+            framessostate++; // Increment frame state for animations
 
+
+            /*
  int currentButtonState = digitalRead(USER_BUTTON_PIN);
 
   // Check if state changed
@@ -583,4 +586,5 @@ void loop() {
     DrawImage(counter);
         engine.display(); 
   lastButtonState = currentButtonState;
+  */
 }

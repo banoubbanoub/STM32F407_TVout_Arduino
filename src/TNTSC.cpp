@@ -444,6 +444,7 @@ extern "C" void DMA2_Stream3_IRQHandler(void) {
     if (flags & DMA_LISR_TCIF3) {
         DMA2->LIFCR = DMA_LIFCR_CTCIF3;    // Clear Transfer Complete Flag
         SPI1->CR2 &= ~SPI_CR2_TXDMAEN;     // Disable SPI DMA Request to stop output
+        SPI1->DR = 0X0000;                          // Dummy read to clear SPI TXE flag
         dma_active = false;
     }
     
@@ -452,6 +453,7 @@ extern "C" void DMA2_Stream3_IRQHandler(void) {
     // -------------------------------------------------------------------------
     if (flags & DMA_LISR_TEIF3) {
         DMA2->LIFCR = DMA_LIFCR_CTEIF3;    // Clear Transfer Error Flag
+        SPI1->DR = 0X0000; 
         SPI1->CR2 &= ~SPI_CR2_TXDMAEN;     // Disable SPI DMA Request
         dma_active = false;
     }
