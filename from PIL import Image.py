@@ -27,7 +27,7 @@ def select_image_file():
     root.destroy()
     return file_path
 
-
+                                                 #320        #200
 def image_to_c_array(image_path, output_header, width=320, height=200):
     if not image_path or not os.path.exists(image_path):
         print("No valid image selected. Exiting.")
@@ -41,6 +41,7 @@ def image_to_c_array(image_path, output_header, width=320, height=200):
 
     # Create a blank black canvas of target size and paste the scaled image centered
     canvas = Image.new("L", (width, height), 0)  # 0 for black background
+    #offset = ((width - img.width) // 2, (height - img.height) // 2)
     offset = ((width - img.width) // 2, (height - img.height) // 2)
     canvas.paste(img, offset)
 

@@ -462,10 +462,10 @@ void DrawImage(uint16_t imge_number) {
   // Safety check to prevent out-of-bounds array reads (prevents crash)
   if (imge_number < 10) {
     //engine.bitmap(0, 0, image_list[imge_number], 0, 320, 200);
-    engine.LoadBitmap(image_list[imge_number], 8000); // Assuming each image is 8000 bytes
+    engine.LoadBitmap(image_list[imge_number], 8000); // Assuming each image is 8000 bytes   image_list[imge_number]
   } else {
     //engine.bitmap(0, 0, image_1_ntsc, 0, 320, 200);
-    engine.LoadBitmap(image_1_ntsc, 8000); // Fallback to first image if out of bounds
+    engine.LoadBitmap(image_1_ntsc, 8000); // Fallback to first image if out of bounds //image_1_ntsc
   }
  // engine.delay(100); // Optional delay for visual effect
 }
