@@ -265,8 +265,8 @@ void Engine3D::intro()
 }
     */
 
-    /*
-    void Engine3D::intro()
+    
+    void Engine3D::intro_1()
 {
     const uint16_t w = TVOlogo[0];   // 96 pixels
     const uint16_t h = TVOlogo[1];   // 32 pixels
@@ -308,7 +308,7 @@ void Engine3D::intro()
 
     clear_screen();
 }
-*/
+
 
 void Engine3D::intro()
 {

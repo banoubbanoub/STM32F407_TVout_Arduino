@@ -30,6 +30,7 @@
 #define NTSC_VSYNC_TICKS        4872                            // Pulse duration for Vertical Sync
 #define NTSC_VIDEO_START        840                             // Timer offset before triggering SPI/DMA video output
 
+
 #define NTSC_FIRST_VISIBLE      31                              // First visible scanline index (after VSYNC / back porch)
 #define NTSC_LAST_VISIBLE       (NTSC_FIRST_VISIBLE + NTSC_VISIBLE_LINES - 1) // Last visible scanline index (230)
 
@@ -110,7 +111,6 @@ public:
      * @brief Timer 2 Interrupt Handler; handles line counter, sync timing, and DMA triggers.
      */
     void TNTSC_TIM2_Handler();
-    void initChroma();
 
 private:
     uint8_t* vram_front;          // Pointer to active front display buffer
@@ -124,7 +124,7 @@ private:
     // Hardware peripheral initialization helpers
     void initGPIO();
     void initTIM2();
-    void initSPI1();
+    void initI2S3();
     void initDMA();
 };
 

@@ -47,7 +47,7 @@ const byte address[6] = "00001";
 Engine3D engine;
 
 uint8_t currentMode = 0;
-const uint8_t TOTAL_MODES = 10; // Modes 0 to 9
+const uint8_t TOTAL_MODES = 11; // Modes 0 to 10
 bool lastButtonState = LOW;
 int16_t framessostate = 0;
 
@@ -428,17 +428,24 @@ void Direct_modulation() {
     engine.setPen(40, 10);
     engine.drawText(lastct, 2);
 
-    if (framessostate > 500) framessostate = 0;
+    if (framessostate > 1000) framessostate = 0;
 }
 
 void DrawSchematic(int16_t x, int16_t y, const unsigned char *bitmap) {
+    const char *s = "My schematic:\nPA1->SYNC\nPA7->Vid\n\n";
+    int len = strlen(s);
+    if (len > framessostate) len = framessostate;
+
+    char lastct[256];
+    strncpy(lastct, s, len);
+    lastct[len] = '\0';
     engine.setColor(1);
-    engine.setPen(60, 10);
-    engine.drawText("My schematic:", 2);
+    engine.setPen(70, 10);
+    engine.drawText(lastct, 2);
 
     engine.Schematic(x, y, bitmap, 0, 0, 0);
 
-    if (framessostate > 500) framessostate = 0;
+    if (framessostate > 200) framessostate = 0;
     engine.delay(50);
 }
 
@@ -484,7 +491,7 @@ void setup() {
     pinMode(USER_BUTTON_PIN, INPUT);
     
     // Initialize UART connection to ESP8266
-    ESP_SERIAL.begin(115200);
+   // ESP_SERIAL.begin(115200);
 
     engine.begin();
     engine.setDoubleBuffering(true);
@@ -495,6 +502,7 @@ void setup() {
 // Main Loop
 // ------------------------------------------------------------
 void loop() {
+    
     
     bool currentButtonState = digitalRead(USER_BUTTON_PIN);
     if (currentButtonState == HIGH && lastButtonState == LOW) {
@@ -541,11 +549,16 @@ void loop() {
             DrawTerminalMode();
             break;
         case 8:
-            TVlogo();
+          //  TVlogo();
             break;
         case 9:
-            DrawWiFiDashboard();
+           // DrawWiFiDashboard();
             break;
+        case 10:
+            engine.clear();
+            engine.intro_1();
+           break;
+
         default:
             engine.setColor(1);
             engine.setPen(60, 10);
@@ -556,7 +569,7 @@ void loop() {
             framessostate++; // Increment frame state for animations
 
 
-            /*
+           /* 
  int currentButtonState = digitalRead(USER_BUTTON_PIN);
 
   // Check if state changed
@@ -587,4 +600,5 @@ void loop() {
         engine.display(); 
   lastButtonState = currentButtonState;
   */
+  
 }
