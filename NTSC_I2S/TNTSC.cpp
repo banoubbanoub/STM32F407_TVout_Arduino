@@ -86,7 +86,7 @@
 // =============================================================================
 // FILE: TNTSC.cpp
 // SYSTEM: STM32F407 NTSC Video Generation Driver (Monochrome 240p Progressive)
-// ARCHITECTURE: TIM2 Base Scanline Timer + SPI1 MOSI Bitstreaming + DMA2 Stream 3
+// ARCHITECTURE: TIM2 Base Scanline Timer + I2S2 MOSI Bitstreaming + DMA2 Stream 3
 // =============================================================================
 // 
 // OVERVIEW:
@@ -97,13 +97,13 @@
 // - TIM2 Channel 2 (PA1) outputs the combined HSYNC/VSYNC active-LOW pulse via PWM.
 // - TIM2 Channel 1 triggers an interrupt at the back-porch offset to start video DMA.
 // - DMA2 Stream 3 transfers frame data (320x200 monochrome, 40 bytes/line) to SPI1.
-// - SPI1 MOSI (PA7) shifts out video bits at 21 Mbps (~47.6 ns/pixel dot clock).
+// - I2S2_SD (PB15) shifts out video bits at 21 Mbps (~47.6 ns/pixel dot clock).
 //
 // SIGNAL VOLTAGE LEVELS (External Resistor DAC Required):
-// - PA1 (Sync) + PA7 (Video) combined via resistor network into 75-ohm load:
+// - PA1 (Sync) + PB15 (Video) combined via resistor network into 75-ohm load:
 //   - HSYNC/VSYNC Active Low  = 0.0V (Sync Tip)
-//   - Blanking / Black Level  = 0.3V (Sync Inactive, SPI MOSI Low)
-//   - White Level (Peak Luminance) = 1.0V (Sync Inactive, SPI MOSI High)
+//   - Blanking / Black Level  = 0.3V (Sync Inactive, I2S2 MSB Low)
+//   - White Level (Peak Luminance) = 1.0V (Sync Inactive, I2S2 MSB High)
 // =============================================================================
 
 #include "TNTSC.h"
